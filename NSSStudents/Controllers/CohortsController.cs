@@ -13,22 +13,20 @@ namespace NSSStudents.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class StudentsController : ControllerBase
+    public class CohortsController : ControllerBase
     {
         private IConfiguration _config;
 
-        public StudentsController(IConfiguration config) => _config = config;
+        public CohortsController(IConfiguration config) => _config = config;
 
         public SqlConnection Connection => new SqlConnection(_config.GetConnectionString("DefaultConnection"));
 
         [HttpGet]
         public async Task<IActionResult> Get(
-            [FromQuery] string cohortName
-
+            [FromQuery] string cohortName = "",
+            [FromQuery] int id = 0
             )
         {
-            if (cohortName == null) cohortName = "";
-
 
             using (SqlConnection conn = Connection)
             {
@@ -41,19 +39,24 @@ namespace NSSStudents.Controllers
                             c.CohortName FROM Cohort c
                         WHERE CohortName LIKE '%' + @cohortName + '%'";
                     cmd.Parameters.Add(new SqlParameter("@cohortName", cohortName));
+                    if (id > 0)
+                    {
+                        cmd.CommandText += " AND Id = @id";
+                        cmd.Parameters.Add(new SqlParameter("@id", id));
+                    }
 
                     SqlDataReader reader = await cmd.ExecuteReaderAsync();
                     List<Cohort> cohorts = new List<Cohort>();
 
                     while (await reader.ReadAsync())
                     {
-                        int id = reader.GetInt32(reader.GetOrdinal("Id"));
+                        int cohortId = reader.GetInt32(reader.GetOrdinal("Id"));
                         Cohort cohort = new Cohort()
                         {
-                            Id = id,
+                            Id = cohortId,
                             CohortName = reader.GetString(reader.GetOrdinal("CohortName")),
-                            Students = await GetStudentsFromCohortId(id),
-                            Instructors = await GetInstructorsFromCohortId(id),
+                            Students = await Repository.GetStudents(conn, cohortId),
+                            Instructors = await Repository.GetInstructors(conn, cohortId),
 
                         };
 
@@ -61,8 +64,6 @@ namespace NSSStudents.Controllers
                     }
                     reader.Close();
 
-                    //cohorts.ForEach(async cohort => cohort.Students = await GetStudentsFromCohortId(cohort.Id));
-                    //cohorts.ForEach(async cohort => cohort.Instructors = await GetInstructorsFromCohortId(cohort.Id, conn));
 
 
                     return Ok(cohorts);
@@ -70,96 +71,6 @@ namespace NSSStudents.Controllers
             }
         }
 
-
-        public async Task<List<Student>> GetStudentsFromCohortId(int cohortId)
-        {
-            using (SqlConnection conn = Connection)
-            {
-                conn.Open();
-                using (SqlCommand cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = @"
-                        SELECT 
-                            Id, 
-                            CohortId, 
-                            FirstName, 
-                            LastName, 
-                            SlackHandle FROM Student
-                        WHERE CohortId = @cohortId";
-                    cmd.Parameters.Add(new SqlParameter("@cohortId", cohortId));
-
-                    SqlDataReader reader = await cmd.ExecuteReaderAsync();
-                    List<Student> students = new List<Student>();
-
-                    while (await reader.ReadAsync())
-                    {
-                        Student student = new Student()
-                        {
-                            Id = reader.GetInt32(reader.GetOrdinal("Id")),
-                            CohortId = reader.GetInt32(reader.GetOrdinal("CohortId")),
-                            FirstName = reader.GetString(reader.GetOrdinal("FirstName")),
-                            LastName = reader.GetString(reader.GetOrdinal("LastName")),
-                            SlackHandle = reader.GetString(reader.GetOrdinal("SlackHandle"))
-
-                        };
-
-                        students.Add(student);
-                    }
-                    reader.Close();
-
-                    return students;
-                }
-            }
-
-
-        }
-
-        public async Task<List<Instructor>> GetInstructorsFromCohortId(int cohortId)
-        {
-            using (SqlConnection conn = Connection)
-            {
-
-                conn.Open();
-                using (SqlCommand cmd = conn.CreateCommand())
-                {
-
-                    cmd.CommandText = @"
-                        SELECT 
-                            Id, 
-                            CohortId, 
-                            FirstName, 
-                            LastName, 
-                            Specialty,
-                            SlackHandle FROM Instructor
-                        WHERE CohortId = @cohortId";
-                    cmd.Parameters.Add(new SqlParameter("@cohortId", cohortId));
-
-                    SqlDataReader reader = await cmd.ExecuteReaderAsync();
-                    List<Instructor> instructors = new List<Instructor>();
-
-                    while (await reader.ReadAsync())
-                    {
-                        Instructor instructor = new Instructor()
-                        {
-                            Id = reader.GetInt32(reader.GetOrdinal("Id")),
-                            CohortId = reader.GetInt32(reader.GetOrdinal("CohortId")),
-                            FirstName = reader.GetString(reader.GetOrdinal("FirstName")),
-                            LastName = reader.GetString(reader.GetOrdinal("LastName")),
-                            SlackHandle = reader.GetString(reader.GetOrdinal("SlackHandle")),
-                            Specialty = reader.GetString(reader.GetOrdinal("Specialty"))
-
-
-                        };
-
-                        instructors.Add(instructor);
-                    }
-                    reader.Close();
-
-                    return instructors;
-                }
-            }
-
-        }
 
         [HttpGet("{id}", Name = "GetCoffee")]
         public async Task<IActionResult> Get([FromRoute] int id)
@@ -201,6 +112,7 @@ namespace NSSStudents.Controllers
                 }
             }
         }
+
 
         //[HttpPost]
         //public async Task<IActionResult> Post([FromBody] Student student)
@@ -312,21 +224,5 @@ namespace NSSStudents.Controllers
 
 
 
-        //private bool CoffeeExists(int id)
-        //{
-        //    using (SqlConnection conn = Connection)
-        //    {
-        //        conn.Open();
-        //        using (SqlCommand cmd = conn.CreateCommand())
-        //        {
-        //            cmd.CommandText = @"SELECT Id, Title, BeanType
-        //                                    FROM Coffee
-        //                                    WHERE Id = @id";
-        //            cmd.Parameters.Add(new SqlParameter("@id", id));
-        //            SqlDataReader reader = cmd.ExecuteReader();
-        //            return reader.Read();
-        //        }
-        //    }
-        //}
     }
 }
